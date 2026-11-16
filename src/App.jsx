@@ -18,6 +18,8 @@ import Cart from "./pages/Cart";
 import Orders from "./pages/Orders";
 import CreateProduct from "./pages/CreateProduct";
 import Login from "./pages/Login";
+import OAuthCallback from "./pages/OAuthCallback";
+import { API_URLS } from "./config/urls";
 
 function RequireAuth() {
   const location = useLocation();
@@ -35,14 +37,16 @@ function AppContent() {
   return (
     <>
       <ToastContainer position="top-right" autoClose={3500} />
-      {pathname !== "/login" && (
-        <>
-          <Navbar />
-          <OfferMarquee />
-        </>
-      )}
+      {pathname !== "/login" &&
+        pathname !== API_URLS.oauthCallback && (
+          <>
+            <Navbar />
+            <OfferMarquee />
+          </>
+        )}
       <Routes>
         <Route element={<Login />} path="/login" />
+        <Route element={<OAuthCallback />} path={API_URLS.oauthCallback} />
         <Route element={<RequireAuth />}>
           <Route element={<Home />} path="/" />
           <Route element={<Products />} path="/products" />

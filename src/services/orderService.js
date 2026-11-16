@@ -1,7 +1,5 @@
 import axios from "axios";
-
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ?? "/api";
+import { API_URLS } from "../config/urls";
 
 function getRequestError(error) {
   if (!axios.isAxiosError(error) || !error.response) {
@@ -26,7 +24,7 @@ function getRequestError(error) {
 
 export async function getOrders({ signal } = {}) {
   try {
-    const { data } = await axios.get(`${API_BASE_URL}/orders`, { signal });
+    const { data } = await axios.get(API_URLS.orders, { signal });
     if (!Array.isArray(data)) {
       throw new TypeError("The orders API must return an array.");
     }
@@ -40,7 +38,7 @@ export async function getOrders({ signal } = {}) {
 export async function placeOrder(orderRequest) {
   try {
     const { data } = await axios.post(
-      `${API_BASE_URL}/orders/place`,
+      API_URLS.placeOrder,
       orderRequest,
     );
     return data;

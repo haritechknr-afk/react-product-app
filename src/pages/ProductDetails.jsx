@@ -2,13 +2,32 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-toastify";
 import ProductImage from "../components/ProductImage";
+import ProductAddedToast from "../components/ProductAddedToast";
 import useProductImage from "../hooks/useProductImage";
-import { addProductToCart } from "../services/cartService";
+import {
+  addProductToCart,
+  getCart,
+  getProductStock,
+  removeProductFromCart,
+  updateCartItemQuantity,
+} from "../services/cartService";
 import {
   deleteProduct,
   getProduct,
   updateProduct,
 } from "../services/productService";
+
+const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
 
 function formatLabel(key) {
   return key
@@ -85,12 +104,17 @@ const CATEGORY_OPTIONS = [
   "Beauty",
   "Books",
   "Clothing",
+  "Computers",
   "Electronics",
+  "Fashion",
   "Food",
+  "Footwear",
   "Furniture",
   "Health",
   "Home & Kitchen",
+  "Phone",
   "Sports",
+  "Tablet",
   "Toys",
 ];
 
@@ -174,6 +198,7 @@ function ProductDetails() {
   const [isEditing, setIsEditing] = useState(false);
   const [actionStatus, setActionStatus] = useState("");
   const [actionError, setActionError] = useState("");
+  const [cartItem, setCartItem] = useState({ productId: null, quantity: 0 });
   const [selectedImage, setSelectedImage] = useState(null);
   const [selectedImagePreview, setSelectedImagePreview] = useState("");
   const imageInputRef = useRef(null);
@@ -197,6 +222,16 @@ function ProductDetails() {
     getProduct(id, { signal: controller.signal })
       .then((product) => {
         if (!controller.signal.aborted) {
+          let quantity = 0;
+          try {
+            quantity =
+              getCart().find((item) => item.product.id === product.id)
+                ?.quantity ?? 0;
+          } catch (error) {
+            toast.error(`Could not load your cart. ${error.message}`);
+          }
+
+          setCartItem({ productId: product.id, quantity });
           setProductResult({ id, status: "success", product });
         }
       })
@@ -223,6 +258,13 @@ function ProductDetails() {
 
   function handleImageChange(event) {
     const image = event.target.files?.[0] ?? null;
+
+    if (image && image.size > MAX_IMAGE_SIZE_BYTES) {
+      removeSelectedImage();
+      setActionError("Image size must be 10 MB or less. Choose a smaller file.");
+      event.target.value = "";
+      return;
+    }
 
     if (image?.type && !image.type.startsWith("image/")) {
       removeSelectedImage();
@@ -326,71 +368,45 @@ function ProductDetails() {
             !/image|photo|picture/i.test(key),
         ),
       );
-      await updateProduct(
+      const updatedProduct = await updateProduct(
         id,
         {
-          ...productFields,
+          ...{id, ...productFields},
           ...updatedFields,
         },
         { image: selectedImage },
+      );
+
+      const savedProduct = {
+        ...product,
+        ...updatedFields,
+        ...updatedProduct,
+        id: product.id,
+      };
+      setProductResult({ id, status: "success", product: savedProduct });
+
+      const imageWasUpdated = Boolean(selectedImage);
+      if (imageWasUpdated) {
+        setSelectedImage(null);
+        setSelectedImagePreview("");
+        if (imageInputRef.current) {
+          imageInputRef.current.value = "";
+        }
+        setImageRefreshKey((key) => key + 1);
+      }
+
+      setIsEditing(false);
+      setActionStatus("");
+      toast.success(
+        imageWasUpdated
+          ? "Product and image updated successfully."
+          : "Product updated successfully.",
       );
     } catch (error) {
       setActionStatus("");
       setActionError("");
       toast.error(`Could not update product. ${error.message}`);
-      return;
     }
-
-    const savedProduct = {
-      ...product,
-      ...updatedFields,
-      id: product.id,
-    };
-
-    let refreshedProduct;
-    try {
-      refreshedProduct = await getProduct(id);
-      if (
-        !refreshedProduct ||
-        typeof refreshedProduct !== "object" ||
-        Array.isArray(refreshedProduct)
-      ) {
-        throw new TypeError("The product API returned an invalid product.");
-      }
-    } catch (error) {
-      setProductResult({ id, status: "success", product: savedProduct });
-      setIsEditing(false);
-      setActionStatus("");
-      setSelectedImage(null);
-      setSelectedImagePreview("");
-      if (imageInputRef.current) {
-        imageInputRef.current.value = "";
-      }
-      toast.error(
-        `Product updated, but could not reload it and its image. ${error.message}`,
-      );
-      return;
-    }
-
-    setProductResult({ id, status: "success", product: refreshedProduct });
-
-    const imageWasUpdated = Boolean(selectedImage);
-    if (imageWasUpdated) {
-      setSelectedImage(null);
-      setSelectedImagePreview("");
-      if (imageInputRef.current) {
-        imageInputRef.current.value = "";
-      }
-    }
-    setImageRefreshKey((key) => key + 1);
-
-    setIsEditing(false);
-    setActionStatus("");
-    toast.success(
-      imageWasUpdated
-        ? "Product and image updated successfully."
-        : "Product updated successfully.",
-    );
   }
 
   async function handleDelete() {
@@ -416,14 +432,37 @@ function ProductDetails() {
 
   function handleAddToCart() {
     try {
-      addProductToCart(product);
+      const cart = addProductToCart(product);
+      const item = cart.find((cartItem) => cartItem.product.id === product.id);
+      setCartItem({ productId: product.id, quantity: item.quantity });
       setActionError("");
-      setActionStatus("added");
-      toast.success("Product added to cart.");
+      toast.success(<ProductAddedToast product={product} />);
     } catch (error) {
-      setActionStatus("");
-      setActionError("");
       toast.error(`Could not save your cart. ${error.message}`);
+    }
+  }
+
+  function handleCartQuantityChange(quantity) {
+    try {
+      if (quantity === 0) {
+        removeProductFromCart(product.id);
+      } else {
+        updateCartItemQuantity(product.id, quantity);
+      }
+
+      setCartItem({ productId: product.id, quantity });
+    } catch (error) {
+      toast.error(`Could not update your cart. ${error.message}`);
+    }
+  }
+
+  function handleIncreaseCartQuantity() {
+    try {
+      const cart = addProductToCart(product);
+      const item = cart.find((cartItem) => cartItem.product.id === product.id);
+      setCartItem({ productId: product.id, quantity: item.quantity });
+    } catch (error) {
+      toast.error(`Could not update your cart. ${error.message}`);
     }
   }
 
@@ -447,6 +486,9 @@ function ProductDetails() {
   }
 
   const isBusy = actionStatus === "updating" || actionStatus === "deleting";
+  const stock = getProductStock(product);
+  const cartQuantity =
+    cartItem.productId === product.id ? cartItem.quantity : 0;
 
   return (
     <main className="product-details-page">
@@ -494,7 +536,8 @@ function ProductDetails() {
                   />
                   {selectedImage && (
                     <p className="selected-image-name">
-                      Selected image: {selectedImage.name}
+                      Selected image: {selectedImage.name} (
+                      {formatFileSize(selectedImage.size)})
                     </p>
                   )}
                   {actionError && (
@@ -676,14 +719,38 @@ function ProductDetails() {
                   ))}
               </dl>
               <div className="product-actions">
-                <button
-                  className="product-action"
-                  disabled={isBusy}
-                  onClick={handleAddToCart}
-                  type="button"
-                >
-                  Add to cart
-                </button>
+                {cartQuantity === 0 ? (
+                  <button
+                    className="product-action"
+                    disabled={isBusy || stock === 0}
+                    onClick={handleAddToCart}
+                    type="button"
+                  >
+                    {stock === 0 ? "Out of stock" : "Add to cart"}
+                  </button>
+                ) : (
+                  <div className="quantity-control product-details-quantity">
+                    <button
+                      aria-label={`Decrease quantity of ${product.name}`}
+                      disabled={isBusy}
+                      onClick={() =>
+                        handleCartQuantityChange(cartQuantity - 1)
+                      }
+                      type="button"
+                    >
+                      −
+                    </button>
+                    <span aria-live="polite">{cartQuantity}</span>
+                    <button
+                      aria-label={`Increase quantity of ${product.name}`}
+                      disabled={isBusy || cartQuantity >= stock}
+                      onClick={handleIncreaseCartQuantity}
+                      type="button"
+                    >
+                      +
+                    </button>
+                  </div>
+                )}
                 <button
                   className="product-action secondary"
                   disabled={isBusy}

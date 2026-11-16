@@ -19,16 +19,9 @@ function ProductImage({
         <p>Loading image...</p>
       ) : (
         <img
-          src={hasImage ? displayedUrl : "/image-not-found.svg"}
-          alt={hasImage ? product.name : "Product image not found"}
-          onError={(event) => {
-            event.currentTarget.onerror = null;
-            event.currentTarget.src = "/image-not-found.svg";
-          }}
+          src={displayedUrl || "/missing-product-image"}
+          alt={product.name}
         />
-      )}
-      {!hasImage && status === "error" && (
-        <span className="product-image-status">Product image unavailable</span>
       )}
       {editable && (
         <div className="product-image-actions">

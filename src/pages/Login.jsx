@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { API_URLS } from "../config/urls";
 import { login, setAuthToken } from "../services/authService";
+
+function handleGoogleLogin() {
+  window.location.assign(API_URLS.googleLogin);
+}
 
 function Login() {
   const [formError, setFormError] = useState("");
@@ -8,9 +13,17 @@ function Login() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+  const googleError =
+    typeof location.state?.googleError === "string"
+      ? location.state.googleError
+      : "";
 
   async function handleSubmit(event) {
     event.preventDefault();
+    if (location.state?.googleError) {
+      navigate("/login", { replace: true, state: null });
+    }
+
     const formData = new FormData(event.currentTarget);
     const username = String(formData.get("username")).trim();
     const password = String(formData.get("password"));
@@ -140,9 +153,9 @@ function Login() {
               </button>
             </div>
 
-            {formError && (
+            {(formError || googleError) && (
               <p className="login-error" role="alert">
-                {formError}
+                {formError || googleError}
               </p>
             )}
 
@@ -155,6 +168,21 @@ function Login() {
               <span aria-hidden="true">→</span>
             </button>
           </form>
+
+          <div aria-hidden="true" className="login-divider">
+            <span>or</span>
+          </div>
+
+          <button
+            className="google-login-button"
+            onClick={handleGoogleLogin}
+            type="button"
+          >
+            <span aria-hidden="true" className="google-login-mark">
+              G
+            </span>
+            Continue with Google
+          </button>
 
           <p className="login-security-note">
             Your password is sent to the login API. The returned JWT is saved

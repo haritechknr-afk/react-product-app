@@ -1,7 +1,5 @@
 import axios from "axios";
-
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ?? "/api";
+import { API_URLS } from "../config/urls";
 
 async function handleRequestError(error) {
   if (!axios.isAxiosError(error) || !error.response) {
@@ -40,7 +38,7 @@ async function handleRequestError(error) {
 
 export function getProducts({ signal } = {}) {
   return axios
-    .get(`${API_BASE_URL}/products`, { signal })
+    .get(API_URLS.products, { signal })
     .then(({ data }) => {
       if (!Array.isArray(data)) {
         throw new TypeError("The products API must return an array.");
@@ -53,7 +51,7 @@ export function getProducts({ signal } = {}) {
 
 export function searchProducts(keyword, { signal } = {}) {
   return axios
-    .get(`${API_BASE_URL}/products/search`, {
+    .get(API_URLS.productSearch, {
       params: { keyword },
       signal,
     })
@@ -69,16 +67,14 @@ export function searchProducts(keyword, { signal } = {}) {
 
 export function getProduct(productId, { signal } = {}) {
   return axios
-    .get(`${API_BASE_URL}/product/${encodeURIComponent(productId)}`, {
-      signal,
-    })
+    .get(API_URLS.product(productId), { signal })
     .then(({ data }) => data)
     .catch(handleRequestError);
 }
 
 export function getProductImage(productId, { signal } = {}) {
   return axios
-    .get(`${API_BASE_URL}/product/${encodeURIComponent(productId)}/image`, {
+    .get(API_URLS.productImage(productId), {
       signal,
       responseType: "blob",
     })
@@ -98,7 +94,7 @@ export function updateProduct(productId, product, { image, signal } = {}) {
 
   return axios
     .put(
-      `${API_BASE_URL}/product/${encodeURIComponent(productId)}`,
+      API_URLS.product(productId),
       formData,
       {
         signal,
@@ -142,7 +138,7 @@ export function createProduct(product, { image, signal } = {}) {
   );
 
   return axios
-    .post(`${API_BASE_URL}/product`, formData, {
+    .post(API_URLS.createProduct, formData, {
       signal,
       headers: { "Content-Type": "multipart/form-data" },
     })
@@ -152,9 +148,7 @@ export function createProduct(product, { image, signal } = {}) {
 
 export function deleteProduct(productId, { signal } = {}) {
   return axios
-    .delete(`${API_BASE_URL}/product/${encodeURIComponent(productId)}`, {
-      signal,
-    })
+    .delete(API_URLS.product(productId), { signal })
     .then(() => undefined)
     .catch(handleRequestError);
 }

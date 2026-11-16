@@ -1,7 +1,7 @@
 import axios from "axios";
+import { API_URLS } from "../config/urls";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
-const LOGIN_URL = `${API_BASE_URL}/login`;
+const LOGIN_URL = API_URLS.login;
 const TOKEN_STORAGE_KEY = "react-product-app-auth-token";
 const LEGACY_USERNAME_KEY = "react-product-app-basic-auth-username";
 const LEGACY_PASSWORD_KEY = "react-product-app-basic-auth-password";

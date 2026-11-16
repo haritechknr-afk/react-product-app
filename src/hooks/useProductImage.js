@@ -1,13 +1,20 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getProductImage } from "../services/productService";
 
 function useProductImage(productId, refreshKey = 0) {
   const [imageResult, setImageResult] = useState(null);
+  const imageUrlRef = useRef(null);
   const currentResult =
-    imageResult?.productId === productId &&
-    imageResult?.refreshKey === refreshKey
-      ? imageResult
-      : null;
+    imageResult?.productId === productId ? imageResult : null;
+
+  useEffect(
+    () => () => {
+      if (imageUrlRef.current) {
+        URL.revokeObjectURL(imageUrlRef.current);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     if (productId == null) {
@@ -15,7 +22,6 @@ function useProductImage(productId, refreshKey = 0) {
     }
 
     const controller = new AbortController();
-    let imageUrl;
 
     getProductImage(productId, { signal: controller.signal })
       .then((image) => {
@@ -23,21 +29,24 @@ function useProductImage(productId, refreshKey = 0) {
           return;
         }
 
-        imageUrl = URL.createObjectURL(image);
+        const imageUrl = URL.createObjectURL(image);
+        if (imageUrlRef.current) {
+          URL.revokeObjectURL(imageUrlRef.current);
+        }
+        imageUrlRef.current = imageUrl;
         setImageResult({ productId, refreshKey, status: "loaded", imageUrl });
       })
       .catch((error) => {
         if (!controller.signal.aborted) {
-          setImageResult({ productId, refreshKey, status: "error", error });
+          setImageResult((result) =>
+            result?.productId === productId
+              ? result
+              : { productId, refreshKey, status: "error", error },
+          );
         }
       });
 
-    return () => {
-      controller.abort();
-      if (imageUrl) {
-        URL.revokeObjectURL(imageUrl);
-      }
-    };
+    return () => controller.abort();
   }, [productId, refreshKey]);
 
   if (productId == null) {

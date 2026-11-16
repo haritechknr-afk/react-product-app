@@ -1,104 +1,160 @@
+import axios from "axios";
+
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080/api";
+  import.meta.env.VITE_API_BASE_URL ?? "/api";
 
-async function fetchResponse(url, options) {
-  const response = await fetch(url, options);
+async function handleRequestError(error) {
+  if (!axios.isAxiosError(error) || !error.response) {
+    throw error;
+  }
 
-  if (!response.ok) {
-    const responseText = (await response.text()).trim();
-    let message = responseText;
+  const { status } = error.response;
+  let { data } = error.response;
+  if (typeof Blob !== "undefined" && data instanceof Blob) {
+    data = await data.text();
+  }
 
-    if (responseText) {
+  let responseMessage = "";
+
+  if (typeof data === "string") {
+    responseMessage = data.trim();
+    if (responseMessage) {
       try {
-        const body = JSON.parse(responseText);
-        message = body.message ?? body.error ?? responseText;
+        const body = JSON.parse(responseMessage);
+        responseMessage = body.message ?? body.error ?? responseMessage;
       } catch {
-        message = responseText;
+        // Keep the response text when it is not JSON.
       }
     }
-
-    throw new Error(
-      message
-        ? `Request failed (${response.status}): ${message.slice(0, 300)}`
-        : `Request failed with status ${response.status}`,
-    );
+  } else if (data && typeof data === "object") {
+    responseMessage = data.message ?? data.error ?? "";
   }
 
-  return response;
-}
-
-export async function getProducts({ signal } = {}) {
-  const response = await fetchResponse(`${API_BASE_URL}/products`, { signal });
-  const products = await response.json();
-
-  if (!Array.isArray(products)) {
-    throw new TypeError("The products API must return an array.");
-  }
-
-  return products;
-}
-
-export async function getProduct(productId, { signal } = {}) {
-  const response = await fetchResponse(
-    `${API_BASE_URL}/product/${encodeURIComponent(productId)}`,
-    { signal },
+  throw new Error(
+    responseMessage
+      ? `Request failed (${status}): ${String(responseMessage).slice(0, 300)}`
+      : `Request failed with status ${status}`,
+    { cause: error },
   );
-
-  return response.json();
 }
 
-export async function getProductImage(productId, { signal } = {}) {
-  const response = await fetchResponse(
-    `${API_BASE_URL}/product/${encodeURIComponent(productId)}/image`,
-    { signal },
-  );
+export function getProducts({ signal } = {}) {
+  return axios
+    .get(`${API_BASE_URL}/products`, { signal })
+    .then(({ data }) => {
+      if (!Array.isArray(data)) {
+        throw new TypeError("The products API must return an array.");
+      }
 
-  return response.blob();
+      return data;
+    })
+    .catch(handleRequestError);
 }
 
-export async function updateProduct(
-  productId,
-  product,
-  { image, signal } = {},
-) {
-  const formData = new FormData();
-  formData.append("product", JSON.stringify(product));
-  if (image) {
-    formData.append("imageFile", image);
-  }
-
-  const response = await fetchResponse(
-    `${API_BASE_URL}/product/${encodeURIComponent(productId)}`,
-    {
-      method: "PUT",
-      body: formData,
+export function searchProducts(keyword, { signal } = {}) {
+  return axios
+    .get(`${API_BASE_URL}/products/search`, {
+      params: { keyword },
       signal,
-    },
-  );
+    })
+    .then(({ data }) => {
+      if (!Array.isArray(data)) {
+        throw new TypeError("The product search API must return an array.");
+      }
 
-  const responseBody = await response.text();
-  if (!responseBody.trim()) {
-    return product;
-  }
-
-  try {
-    const body = JSON.parse(responseBody);
-    return (
-      body &&
-      typeof body === "object" &&
-      !Array.isArray(body) &&
-      Object.keys(product).some((key) => key in body)
-    )
-      ? body
-      : product;
-  } catch {
-    return product;
-  }
+      return data;
+    })
+    .catch(handleRequestError);
 }
 
-export async function deleteProduct(productId, { signal } = {}) {
-  await fetchResponse(
-    `${API_BASE_URL}/product/${encodeURIComponent(productId)}`,
-    { method: "DELETE", signal },
+export function getProduct(productId, { signal } = {}) {
+  return axios
+    .get(`${API_BASE_URL}/product/${encodeURIComponent(productId)}`, {
+      signal,
+    })
+    .then(({ data }) => data)
+    .catch(handleRequestError);
+}
+
+export function getProductImage(productId, { signal } = {}) {
+  return axios
+    .get(`${API_BASE_URL}/product/${encodeURIComponent(productId)}/image`, {
+      signal,
+      responseType: "blob",
+    })
+    .then(({ data }) => data)
+    .catch(handleRequestError);
+}
+
+export function updateProduct(productId, product, { image, signal } = {}) {
+  const formData = new FormData();
+  formData.append(
+    "product",
+    new Blob([JSON.stringify(product)], { type: "application/json" }),
   );
+  if (image) {
+    formData.append("imageFile", image, image.name);
+  }
+
+  return axios
+    .put(
+      `${API_BASE_URL}/product/${encodeURIComponent(productId)}`,
+      formData,
+      {
+        signal,
+        headers: { "Content-Type": "multipart/form-data" },
+      },
+    )
+    .then(({ data }) => {
+      if (data == null || (typeof data === "string" && !data.trim())) {
+        return product;
+      }
+
+      let responseBody = data;
+      if (typeof responseBody === "string") {
+        try {
+          responseBody = JSON.parse(responseBody);
+        } catch {
+          return product;
+        }
+      }
+
+      return responseBody &&
+        typeof responseBody === "object" &&
+        !Array.isArray(responseBody) &&
+        Object.keys(product).some((key) => key in responseBody)
+        ? responseBody
+        : product;
+    })
+    .catch(handleRequestError);
+}
+
+export function createProduct(product, { image, signal } = {}) {
+  const formData = new FormData();
+  formData.append(
+    "product",
+    new Blob([JSON.stringify(product)], { type: "application/json" }),
+  );
+  formData.append(
+    "imageFile",
+    image ?? new Blob([], { type: "application/octet-stream" }),
+    image?.name ?? "empty",
+  );
+
+  return axios
+    .post(`${API_BASE_URL}/product`, formData, {
+      signal,
+      headers: { "Content-Type": "multipart/form-data" },
+    })
+    .then(({ data }) => data)
+    .catch(handleRequestError);
+}
+
+export function deleteProduct(productId, { signal } = {}) {
+  return axios
+    .delete(`${API_BASE_URL}/product/${encodeURIComponent(productId)}`, {
+      signal,
+    })
+    .then(() => undefined)
+    .catch(handleRequestError);
 }
